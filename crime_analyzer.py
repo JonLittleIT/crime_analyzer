@@ -37,7 +37,7 @@ RACE_KEYWORDS = {
     "Asian": ["asian", "chinese", "korean", "vietnamese"]
 }
 
-# --- Existing functions ---
+# --- Helper functions ---
 
 def fetch_articles():
     articles = []
@@ -113,8 +113,6 @@ def compare_disproportion(news_counts, fbi_df):
         dispro[r] = news_pct.get(r, 0.1) / max(latest.get(r, 0.1), 0.1)
     return dispro
 
-# --- CKAN API call for recent datasets ---
-
 def get_recent_ckan_datasets():
     try:
         url = "https://catalog.data.gov/api/3/action/package_search"
@@ -144,8 +142,6 @@ def get_recent_ckan_datasets():
         st.warning(f"Failed to fetch CKAN datasets: {e}")
         return []
 
-# --- Article cards UI ---
-
 def get_color_by_ratio(ratio):
     if ratio > 1.5:
         return "#ff4b4b"  # Red (highly overrepresented)
@@ -154,20 +150,21 @@ def get_color_by_ratio(ratio):
     else:
         return "#2ecc71"  # Green (underrepresented or equal)
 
-def article_card(title, race_group, ratio):
+def article_card(title, race_group, ratio, link, explanation):
     color = get_color_by_ratio(ratio)
     st.markdown(
         f"""
         <div style="
             border-radius: 10px;
             padding: 15px;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
             background-color: {color};
             color: black;
             box-shadow: 2px 2px 8px rgba(0,0,0,0.15);
             ">
-            <h4 style="margin-bottom:5px;">{title}</h4>
+            <h4 style="margin-bottom:5px;"><a href="{link}" target="_blank" style="color:black; text-decoration:none;">{title}</a></h4>
             <p style="margin:0;"><b>Most Overrepresented Group:</b> {race_group} ({ratio:.2f}x)</p>
+            <p style="font-size:12px; color:#333;">Tagging keywords matched: {explanation}</p>
         </div>
         """,
         unsafe_allow_html=True
@@ -221,19 +218,24 @@ if dispro:
 else:
     st.info("Disproportionality data could not be computed.")
 
-# Article cards colored by disproportionality
+# Article cards colored by disproportionality with clickable links and keyword explanations
 st.subheader("News Articles Colored by Race Group Overrepresentation")
 cols_per_row = 3
 cols = st.columns(cols_per_row)
 
 for idx, art in enumerate(articles):
     combined_text = f"{art.get('title','')} {art.get('summary','')}".lower()
+    mentioned_groups = []
+    explanation_parts = []
+    for r, kws in RACE_KEYWORDS.items():
+        matched = [kw for kw in kws if re.search(rf"\b{kw}\b", combined_text)]
+        if matched:
+            mentioned_groups.append(r)
+            explanation_parts.append(f"{r}: {', '.join(matched)}")
 
-    # Find mentioned races in article text
-    mentioned_groups = [r for r, kws in RACE_KEYWORDS.items() if any(re.search(rf"\b{kw}\b", combined_text) for kw in kws)]
+    explanation = "; ".join(explanation_parts) if explanation_parts else "No race keywords found"
 
     if mentioned_groups:
-        # Pick the race group with highest disproportionality ratio (default 1.0)
         ratios = {g: dispro.get(g, 1.0) for g in mentioned_groups}
         top_group = max(ratios, key=ratios.get)
         top_ratio = ratios[top_group]
@@ -242,7 +244,13 @@ for idx, art in enumerate(articles):
         top_ratio = 1.0
 
     with cols[idx % cols_per_row]:
-        article_card(art.get("title", "No Title"), top_group, top_ratio)
+        article_card(
+            art.get("title", "No Title"),
+            top_group,
+            top_ratio,
+            art.get("link", "#"),
+            explanation
+        )
 
 with st.expander("Debug: Show raw articles and FBI data"):
     if st.checkbox("Show raw news articles"):
