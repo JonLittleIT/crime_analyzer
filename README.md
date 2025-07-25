@@ -12,3 +12,5 @@ source crime_analyzer_env/bin/activate
 install streamlit
 
 streamlit run crime_analyzer.py
+
+https://crimeanalyzer.streamlit.app
