@@ -37,6 +37,15 @@ RACE_KEYWORDS = {
     "Asian": ["asian", "chinese", "korean", "vietnamese"]
 }
 
+# Phrases to ignore when tagging race
+EXCLUDE_PHRASES = [
+    "white house",
+    "white house press",
+    "white house briefing",
+    "white house official",
+    "white house statement"
+]
+
 # --- Helper functions ---
 
 def fetch_articles():
@@ -54,6 +63,11 @@ def analyze_news_race_mentions(articles):
     counts = defaultdict(int)
     for art in articles:
         text = f"{art.get('title','')} {art.get('summary','')}".lower()
+
+        # Skip if any exclusion phrase is in the text
+        if any(phrase in text for phrase in EXCLUDE_PHRASES):
+            continue
+
         for race, keywords in RACE_KEYWORDS.items():
             if any(re.search(rf"\b{kw}\b", text) for kw in keywords):
                 counts[race] += 1
@@ -225,6 +239,11 @@ cols = st.columns(cols_per_row)
 
 for idx, art in enumerate(articles):
     combined_text = f"{art.get('title','')} {art.get('summary','')}".lower()
+
+    # Skip articles with excluded political phrases
+    if any(phrase in combined_text for phrase in EXCLUDE_PHRASES):
+        continue
+
     mentioned_groups = []
     explanation_parts = []
     for r, kws in RACE_KEYWORDS.items():
