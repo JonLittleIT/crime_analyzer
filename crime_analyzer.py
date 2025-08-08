@@ -9,13 +9,14 @@ import plotly.express as px
 import spacy
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
+from newspaper import Article  # NEW for deeper article content extraction
 
 # --- Load Env Vars ---
 load_dotenv()
 DATA_GOV_API_KEY = os.getenv("DATA_GOV_API_KEY")
-LOCAL_CSV_DIR = "./"  # folder to scan local CSVs in
+LOCAL_CSV_DIR = "./"
 
-# Load spaCy
+# Load spaCy for NER
 nlp = spacy.load("en_core_web_sm")
 
 # RSS feeds
@@ -37,15 +38,6 @@ RACE_KEYWORDS = {
     "Asian": ["asian", "chinese", "korean", "vietnamese"]
 }
 
-# Phrases to ignore when tagging race
-EXCLUDE_PHRASES = [
-    "white house",
-    "white house press",
-    "white house briefing",
-    "white house official",
-    "white house statement"
-]
-
 # --- Helper functions ---
 
 def fetch_articles():
@@ -59,17 +51,42 @@ def fetch_articles():
             pass
     return articles
 
+def is_excluded_by_ner(text):
+    """Return True if spaCy finds a location/org named entity with 'white' in it."""
+    doc = nlp(text)
+    for ent in doc.ents:
+        if ent.label_ in {"GPE", "ORG", "FAC"} and "white" in ent.text.lower():
+            return True
+    return False
+
+def get_full_article_text(link):
+    """Try to fetch and parse full article text."""
+    try:
+        art = Article(link)
+        art.download()
+        art.parse()
+        return art.text
+    except:
+        return ""
+
 def analyze_news_race_mentions(articles):
     counts = defaultdict(int)
     for art in articles:
-        text = f"{art.get('title','')} {art.get('summary','')}".lower()
+        base_text = f"{art.get('title','')} {art.get('summary','')}".strip()
+        base_text_lower = base_text.lower()
 
-        # Skip if any exclusion phrase is in the text
-        if any(phrase in text for phrase in EXCLUDE_PHRASES):
+        # Skip if spaCy detects a location/org like "White House"
+        if is_excluded_by_ner(base_text_lower):
             continue
 
+        # Try to fetch full article for deeper keyword scanning
+        full_text = ""
+        if art.get("link"):
+            full_text = get_full_article_text(art["link"])
+        combined_text = (base_text + " " + full_text).lower()
+
         for race, keywords in RACE_KEYWORDS.items():
-            if any(re.search(rf"\b{kw}\b", text) for kw in keywords):
+            if any(re.search(rf"\b{kw}\b", combined_text) for kw in keywords):
                 counts[race] += 1
     return counts
 
@@ -158,11 +175,11 @@ def get_recent_ckan_datasets():
 
 def get_color_by_ratio(ratio):
     if ratio > 1.5:
-        return "#ff4b4b"  # Red (highly overrepresented)
+        return "#ff4b4b"
     elif ratio > 1.0:
-        return "#f9d71c"  # Yellow (slightly overrepresented)
+        return "#f9d71c"
     else:
-        return "#2ecc71"  # Green (underrepresented or equal)
+        return "#2ecc71"
 
 def article_card(title, race_group, ratio, link, explanation):
     color = get_color_by_ratio(ratio)
@@ -232,17 +249,22 @@ if dispro:
 else:
     st.info("Disproportionality data could not be computed.")
 
-# Article cards colored by disproportionality with clickable links and keyword explanations
+# Article cards
 st.subheader("News Articles Colored by Race Group Overrepresentation")
 cols_per_row = 3
 cols = st.columns(cols_per_row)
 
 for idx, art in enumerate(articles):
-    combined_text = f"{art.get('title','')} {art.get('summary','')}".lower()
+    base_text = f"{art.get('title','')} {art.get('summary','')}".strip()
+    base_text_lower = base_text.lower()
 
-    # Skip articles with excluded political phrases
-    if any(phrase in combined_text for phrase in EXCLUDE_PHRASES):
+    if is_excluded_by_ner(base_text_lower):
         continue
+
+    full_text = ""
+    if art.get("link"):
+        full_text = get_full_article_text(art["link"])
+    combined_text = (base_text + " " + full_text).lower()
 
     mentioned_groups = []
     explanation_parts = []
