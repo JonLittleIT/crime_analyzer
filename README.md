@@ -1,5 +1,8 @@
 ## Crime Analyzer
 
+#Crimetool
+#policedata
+
 ### Used for comparing RSS feeds from news networks then identifying race based data and comparing with actual FBI crime data to understand if news media is under or over reporting on marginalized minority groups to give a false sense of who is commiting the crime in local and regional areas. This is ment to compare geolocations of crime and news.
 
 You must requeset a data API key if you dont only want to use local .csv for data sets. The code is built to use .csv if the API fails so it can gracefully report on local .csv files and not just load nothing with out internet.
